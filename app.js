@@ -5,7 +5,7 @@ const MIN_DURATION = Duration.fromISO('PT30M').as('milliseconds');
 
 // if you're going to supply a start or end time, you must specify a maximum duration
 // you can supply just a duration and we'll fit it into your schedule based on order
-// no duration: it can go anywhere you have a free 15 minutes
+// no duration: it can go anywhere you have a free MIN_DURATION amount of time
 
 const plan = [{
   name: 'get dressed, shower',
@@ -26,7 +26,7 @@ const plan = [{
   duration: Duration.fromISO('PT1H30M')
 }, {
   name: 'convert html mockup to wordpress theme',
-  duration: Duration.fromISO('PT2H')
+  duration: Duration.fromISO('PT45M')
 }, {
   name: 'eat dinner',
   start_time: DateTime.fromISO('2017-12-16T18:00:00')
@@ -37,10 +37,15 @@ const items_with_end_times = plan.filter(item => item.end_time);
 const items_with_durations = plan.filter(item => item.duration);
 const items_without_derived_durations = plan.filter(item => !item.duration && !(item.start_time && item.end_time));
 
-// compute average duration of items, use MIN_DURATION by default
-const average_duration_ms = items_with_durations.length ? items_with_durations
+// compute average duration of items, CAUTION this can be NaN
+const computed_average_ms = items_with_durations
   .map(item => item.duration.as('milliseconds'))
-  .reduce((total, duration) => total + duration, 0) / items_with_durations.length : MIN_DURATION;
+  .reduce((total, duration) => total + duration, 0) / items_with_durations.length;
+
+// use MIN_DURATION by default
+const average_duration_ms = items_with_durations.length ? 
+  Math.max(computed_average_ms, MIN_DURATION) : MIN_DURATION;
+
 const average_duration = Duration.fromMillis(average_duration_ms);
 
 for (var item of items_without_derived_durations) {
@@ -103,7 +108,8 @@ while (unscheduled.length) {
   if (schedule.length > 1) {
     for (var i = 0; i < schedule.length; i++) {
       const current_item = schedule[i];
-      const next_item = schedule[i + 1];
+      const j = i + 1;
+      const next_item = schedule[j];
 
       // CASE 2.0: attempt to fit between plan start and first task
       if (!i && to_schedule.duration.as('minutes') < current_item.start_time.diff(plan_start).as('minutes')) {
@@ -118,7 +124,7 @@ while (unscheduled.length) {
         if (to_schedule.duration.as('minutes') < next_item.start_time.diff(current_item.end_time).as('minutes')) {
           to_schedule.start_time = current_item.end_time;
           to_schedule.end_time = to_schedule.start_time.plus(to_schedule.duration);
-          schedule = [...schedule.slice(0, i+1), to_schedule, ...schedule.slice(i+1, schedule.length)];
+          schedule = [...schedule.slice(0, j), to_schedule, ...schedule.slice(j, schedule.length)];
           break;
         }
       }
@@ -133,6 +139,8 @@ while (unscheduled.length) {
     }
   }
 }
+
+/// IDEA: scheduling "confidence factor", provide estimate duration and compare with average
 
 console.log(schedule.map(item => ({
   name: item.name,
